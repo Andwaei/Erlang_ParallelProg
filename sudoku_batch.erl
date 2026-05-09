@@ -6,7 +6,10 @@ run_batch(Puzzles, NumWorkers) ->
     Self = self(),
     io:format("Spawning ~p workers for ~p puzzles...~n", [NumWorkers, length(Puzzles)]),
     [spawn(fun() -> worker_loop(Self) end) || _ <- lists:seq(1, NumWorkers)],
-    dealer(Puzzles, NumWorkers, length(Puzzles), []).
+    T0 = erlang:monotonic_time(millisecond),
+    Results = dealer(Puzzles, NumWorkers, length(Puzzles), []),
+    ParallelMs = erlang:monotonic_time(millisecond) - T0,
+    {Results, ParallelMs}.
 
 %% Phase 3: Control Constructs (Message Passing)
 dealer([], 0, 0, Results) -> lists:reverse(Results);
@@ -21,8 +24,9 @@ dealer(Pending, ActiveWorkers, Outstanding, Results) ->
                     WorkerPid ! stop,
                     dealer([], ActiveWorkers - 1, Outstanding, Results)
             end;
-        {result, PuzzleIn, SolveResult} ->
-            Entry = #{input => PuzzleIn, result => SolveResult},
+        {result, PuzzleIn, SolveResult, Nanos, WorkerPid} ->
+            Entry = #{input => PuzzleIn, result => SolveResult,
+                      nanos => Nanos, worker => WorkerPid},
             dealer(Pending, ActiveWorkers, Outstanding - 1, [Entry | Results])
     end.
 
@@ -30,9 +34,12 @@ worker_loop(SupervisorPid) ->
     SupervisorPid ! {want_work, self()},
     receive
         {task, PuzzleStr} ->
+            T0 = erlang:monotonic_time(nanosecond),
             Board = parse_board(PuzzleStr),
             Result = solve_board(Board),
-            SupervisorPid ! {result, PuzzleStr, Result},
+            Nanos = erlang:monotonic_time(nanosecond) - T0,
+            WorkerPid = pid_to_list(self()),
+            SupervisorPid ! {result, PuzzleStr, Result, Nanos, WorkerPid},
             worker_loop(SupervisorPid);
         stop ->
             ok

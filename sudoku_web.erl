@@ -33,9 +33,17 @@ handle_request(Socket) ->
             PuzzlesBin = binary:split(BodyBin, <<"\n">>, [global, trim_all]),
             PuzzleStrs = [binary_to_list(P) || P <- PuzzlesBin, byte_size(P) =:= 81],
             
-            %% Pass to the Erlang Dealer
-            Results = sudoku_batch:run_batch(PuzzleStrs, NumWorkers),
-            
+            %% Pass to the Erlang Dealer (now returns {Results, ParallelMs})
+            {Results, ParallelMs} = sudoku_batch:run_batch(PuzzleStrs, NumWorkers),
+
+            %% Sequential baseline: re-run with 1 worker for Ts
+            {SeqResults, SeqMs} = sudoku_batch:run_batch(PuzzleStrs, 1),
+            _ = SeqResults,
+
+            %% Print summary + write output files
+            sudoku_results:print_summary(Results, ParallelMs, SeqMs, NumWorkers),
+            sudoku_results:write_results(Results, "output", ParallelMs, SeqMs, NumWorkers),
+
             %% Return JSON
             JsonRes = format_results_json(Results),
             ResponseBin = list_to_binary(JsonRes),
