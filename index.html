@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batch Sudoku Validator & Solver</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --bg: #f3f4f6;
+            --card-bg: #ffffff;
+            --text-main: #1f2937;
+            --text-muted: #6b7280;
+            --border: #e5e7eb;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0;
+        }
+
+        .header {
+            background-color: var(--primary);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 { margin: 0; font-size: 24px; }
+        .header p { margin: 5px 0 0 0; font-size: 14px; opacity: 0.8; }
+
+        .container {
+            display: flex;
+            padding: 20px;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .sidebar {
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .card-header h3 { margin: 0; font-size: 16px; }
+        .refresh-btn { background: none; border: none; color: var(--primary); cursor: pointer; font-size: 12px; font-weight: bold; padding: 0; }
+        .refresh-btn:hover { text-decoration: underline; }
+
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-size: 14px; margin-bottom: 5px; color: var(--text-muted); }
+        .form-group input[type="number"], .form-group input[type="file"] {
+            width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box;
+        }
+
+        .checkbox-group { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 20px; }
+
+        button.run-btn {
+            width: 100%; background: var(--primary); color: white; border: none; padding: 12px; font-size: 16px; border-radius: 4px; cursor: pointer; font-weight: 600;
+        }
+        button.run-btn:hover { background: #4338ca; }
+        button.run-btn:disabled { background: #9ca3af; cursor: not-allowed; }
+
+        /* Sudoku Preview Grid Styles */
+        .sudoku-grid {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            gap: 1px;
+            background: #9ca3af; /* Grid line color */
+            border: 2px solid #1f2937;
+            aspect-ratio: 1;
+        }
+        .sudoku-cell {
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+        .sudoku-cell.empty { color: #d1d5db; }
+        .sudoku-cell.solved { color: var(--primary); }
+        
+        /* 3x3 Box borders */
+        .sudoku-cell:nth-child(3n) { border-right: 2px solid #1f2937; }
+        .sudoku-cell:nth-child(9n) { border-right: none; }
+        .sudoku-cell:nth-child(n+19):nth-child(-n+27),
+        .sudoku-cell:nth-child(n+46):nth-child(-n+54) { border-bottom: 2px solid #1f2937; }
+
+        .main-content {
+            flex: 1; display: flex; flex-direction: column; gap: 20px;
+        }
+
+        .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
+        .metric-box { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .metric-box span.label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 5px; font-weight: 600; }
+        .metric-box span.value { font-size: 24px; font-weight: bold; }
+
+        .val-total { color: var(--text-main); }
+        .val-solved { color: var(--success); }
+        .val-invalid { color: var(--danger); }
+        .val-unsolvable { color: var(--warning); }
+        .val-ts { color: var(--text-muted); }
+        .val-tp { color: var(--primary); }
+        .val-speedup { color: var(--primary); }
+        .val-efficiency { color: var(--primary); }
+
+        .table-container { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; flex: 1; max-height: 500px; overflow-y: auto;}
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+        th, td { padding: 12px 15px; border-bottom: 1px solid var(--border); }
+        th { background: #f9fafb; color: var(--text-muted); font-weight: 600; position: sticky; top: 0; box-shadow: 0 1px 0 var(--border); }
+        tr:nth-child(even) { background: #f9fafb; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div>
+            <h1>Batch Sudoku Validator & Solver</h1>
+            <p>PLT-Parallel Bridge Matrix · Erlang Actor Model Implementation · Task Parallelism</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Configuration</h3>
+                </div>
+                <div class="form-group">
+                    <label>Puzzle count (loaded from file)</label>
+                    <input type="number" id="puzzleCount" value="0" disabled>
+                </div>
+                <div class="form-group">
+                    <label>Worker threads (N)</label>
+                    <input type="number" id="workerCount" value="8" min="1">
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="runSequential" checked>
+                    <label for="runSequential">Run sequential baseline</label>
+                </div>
+                <div class="form-group">
+                    <label>Custom Puzzle File (.txt)</label>
+                    <input type="file" id="fileInput" accept=".txt">
+                </div>
+                <button id="startBtn" class="run-btn" disabled>▶ Run Batch Solve</button>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>Preview (Sample)</h3>
+                    <button class="refresh-btn" id="refreshPreviewBtn">Refresh</button>
+                </div>
+                <div class="sudoku-grid" id="previewGrid">
+                    </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="metrics-grid">
+                <div class="metric-box"><span class="label">Total</span><span class="value val-total" id="m-total">0</span></div>
+                <div class="metric-box"><span class="label">Solved ✓</span><span class="value val-solved" id="m-solved">0</span></div>
+                <div class="metric-box"><span class="label">Invalid/Errors ✗</span><span class="value val-invalid" id="m-invalid">0</span></div>
+                <div class="metric-box"><span class="label">Unsolvable</span><span class="value val-unsolvable" id="m-unsolvable">0</span></div>
+                
+                <div class="metric-box"><span class="label">Sequential Ts</span><span class="value val-ts" id="m-ts">-- ms</span></div>
+                <div class="metric-box"><span class="label">Parallel Tp</span><span class="value val-tp" id="m-tp">-- ms</span></div>
+                <div class="metric-box"><span class="label">Speedup (S)</span><span class="value val-speedup" id="m-speedup">-- x</span></div>
+                <div class="metric-box"><span class="label">Efficiency (E)</span><span class="value val-efficiency" id="m-efficiency">-- %</span></div>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Puzzle #</th>
+                            <th>Status</th>
+                            <th>Worker Thread</th>
+                            <th>Time (ms)</th>
+                            <th>Givens</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsTableBody">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+   <script>
+    const fileInput = document.getElementById('fileInput');
+    const startBtn = document.getElementById('startBtn');
+    const resultsTableBody = document.getElementById('resultsTableBody');
+    const previewGrid = document.getElementById('previewGrid');
+    const refreshPreviewBtn = document.getElementById('refreshPreviewBtn');
+    
+    let puzzles = [];
+
+    renderPreview("0".repeat(81));
+
+    fileInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const text = e.target.result;
+            puzzles = text.split(/\r?\n/).map(p => p.trim()).filter(p => p.length === 81);
+            if (puzzles.length > 0) {
+                document.getElementById('puzzleCount').value = puzzles.length;
+                document.getElementById('m-total').innerText = puzzles.length;
+                startBtn.disabled = false;
+                renderPreview(puzzles[0]);
+            }
+        };
+        reader.readAsText(file);
+    });
+
+    refreshPreviewBtn.addEventListener('click', () => {
+        if (puzzles.length > 0) {
+            renderPreview(puzzles[Math.floor(Math.random() * puzzles.length)]);
+        }
+    });
+
+    function renderPreview(boardStr) {
+        previewGrid.innerHTML = '';
+        for (let i = 0; i < 81; i++) {
+            const char = boardStr[i];
+            const div = document.createElement('div');
+            div.className = 'sudoku-cell';
+            if (char === '0' || char === '.') {
+                div.innerText = '·';
+                div.classList.add('empty');
+            } else {
+                div.innerText = char;
+            }
+            previewGrid.appendChild(div);
+        }
+    }
+
+    async function sendBatchToErlang(puzzleArray, numWorkers) {
+        const textBody = puzzleArray.join('\n');
+        const start = performance.now();
+        
+        try {
+            const response = await fetch('http://localhost:8080/solve_batch', {
+                method: 'POST',
+                headers: { 'Workers': numWorkers.toString() },
+                body: textBody
+            });
+            const data = await response.json();
+            const time = performance.now() - start;
+            return { time: time, results: data };
+        } catch (error) {
+            alert("Erlang server not responding. Did you start sudoku_web:start()?");
+            return null;
+        }
+    }
+
+    startBtn.addEventListener('click', async () => {
+        startBtn.disabled = true;
+        resultsTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Processing batch in Erlang...</td></tr>';
+        
+        const runSeq = document.getElementById('runSequential').checked;
+        const N = parseInt(document.getElementById('workerCount').value) || 1;
+        
+        let Ts = 0;
+        let Tp = 0;
+
+        // --- Phase 1: Sequential Baseline (Ts) ---
+        if (runSeq) {
+            console.log("Running Sequential Batch...");
+            const seqData = await sendBatchToErlang(puzzles, 1); // 1 Worker = Sequential
+            if (seqData) {
+                Ts = seqData.time;
+                document.getElementById('m-ts').innerText = `${Ts.toFixed(0)} ms`;
+            }
+        }
+
+        // --- Phase 2: Parallel Execution (Tp) ---
+        console.log(`Running Parallel Batch with ${N} workers...`);
+        const parData = await sendBatchToErlang(puzzles, N);
+        
+        if (parData) {
+            Tp = parData.time;
+            document.getElementById('m-tp').innerText = `${Tp.toFixed(0)} ms`;
+
+            // Update UI Table
+            resultsTableBody.innerHTML = '';
+            let stats = { solved: 0, invalid: 0, unsolvable: 0 };
+
+            parData.results.forEach((res, index) => {
+                if (res.status === 'solved') stats.solved++;
+                else if (res.status === 'invalid') stats.invalid++;
+                else stats.unsolvable++;
+
+                const tr = document.createElement('tr');
+                const statusColor = res.status === 'solved' ? '#10b981' : (res.status === 'invalid' ? '#ef4444' : '#f59e0b');
+                
+                tr.innerHTML = `
+                    <td>${index + 1}</td>
+                    <td style="font-weight:bold; color: ${statusColor}">${res.status.toUpperCase()}</td>
+                    <td>Erlang Pool</td>
+                    <td>Batch</td>
+                    <td>${res.puzzle.replace(/0/g, '').length}</td>
+                `;
+                resultsTableBody.appendChild(tr);
+            });
+
+            document.getElementById('m-solved').innerText = stats.solved;
+            document.getElementById('m-invalid').innerText = stats.invalid;
+            document.getElementById('m-unsolvable').innerText = stats.unsolvable;
+            renderPreview(parData.results[0].board || parData.results[0].puzzle);
+        }
+
+        // --- Phase 3: Benchmarking Math ---
+        if (runSeq && Tp > 0) {
+            const S = Ts / Tp;
+            const E = (S / N) * 100;
+            document.getElementById('m-speedup').innerText = `${S.toFixed(2)}x`;
+            document.getElementById('m-efficiency').innerText = `${E.toFixed(1)}%`;
+        }
+
+        startBtn.disabled = false;
+    });
+</script>
+</body>
+</html>
+
+
